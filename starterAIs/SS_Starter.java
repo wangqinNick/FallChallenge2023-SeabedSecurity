@@ -1,21 +1,29 @@
 import java.util.*;
+import java.util.stream.Collectors;
 
 // Define the data structures as records
-record Vector(int x, int y) {}
+record Vector(int x, int y) {
+}
 
-record FishDetail(int color, int type) {}
+record FishDetail(int color, int type) {
+}
 
-record Fish(int fishId, Vector pos, Vector speed, FishDetail detail) {}
+record Fish(int fishId, Vector pos, Vector speed, FishDetail detail) {
+}
 
-record Drone(int droneId, Vector pos, boolean dead, int battery, List<Integer> scans) {}
+record Drone(int droneId, Vector pos, boolean dead, int battery, List<Integer> scans, int light) {
+}
 
-record RadarBlip(int fishId, String dir) {}
+record RadarBlip(int fishId, String dir) {
+}
 
 class Player {
     public static void main(String[] args) {
         Scanner in = new Scanner(System.in);
 
         Map<Integer, FishDetail> fishDetails = new HashMap<>();
+
+        List<Integer> scannedIds = new ArrayList<>();
 
         int fishCount = in.nextInt();
         for (int i = 0; i < fishCount; i++) {
@@ -30,8 +38,8 @@ class Player {
             List<Integer> myScans = new ArrayList<>();
             List<Integer> foeScans = new ArrayList<>();
             Map<Integer, Drone> droneById = new HashMap<>();
-            List<Drone> myDrones = new ArrayList<>();
-            List<Drone> foeDrones = new ArrayList<>();
+            List<Drone> myDrones = new ArrayList<>();   // 我方无人机
+            List<Drone> foeDrones = new ArrayList<>();  // 敌方无人机
             List<Fish> visibleFishes = new ArrayList<>();
             Map<Integer, List<RadarBlip>> myRadarBlips = new HashMap<>();
 
@@ -50,8 +58,6 @@ class Player {
                 foeScans.add(fishId);
             }
 
-            
-
             int myDroneCount = in.nextInt();
             for (int i = 0; i < myDroneCount; i++) {
                 int droneId = in.nextInt();
@@ -60,7 +66,7 @@ class Player {
                 boolean dead = in.nextInt() == 1;
                 int battery = in.nextInt();
                 Vector pos = new Vector(droneX, droneY);
-                Drone drone = new Drone(droneId, pos, dead, battery, new ArrayList<>());
+                Drone drone = new Drone(droneId, pos, dead, battery, new ArrayList<>(), 0);
                 droneById.put(droneId, drone);
                 myDrones.add(drone);
                 myRadarBlips.put(droneId, new ArrayList<>());
@@ -74,7 +80,7 @@ class Player {
                 boolean dead = in.nextInt() == 1;
                 int battery = in.nextInt();
                 Vector pos = new Vector(droneX, droneY);
-                Drone drone = new Drone(droneId, pos, dead, battery, new ArrayList<>());
+                Drone drone = new Drone(droneId, pos, dead, battery, new ArrayList<>(), 0);
                 droneById.put(droneId, drone);
                 foeDrones.add(drone);
             }
@@ -108,15 +114,80 @@ class Player {
             }
 
             for (Drone drone : myDrones) {
-                int x = drone.pos().x();
-                int y = drone.pos().y();
-                // TODO: Implement logic on where to move here
-                int targetX = 5000;
-                int targetY = 5000;
-                int light = 1;
+                // 处理未找到雷达脉冲信息列表的情况
+                int targetX = drone.pos().x();
+                int targetY = drone.pos().y();
 
-                System.out.println(String.format("MOVE %d %d %d", targetX, targetY, light));
+
+                int currentX = drone.pos().x();
+                int currentY = drone.pos().y();
+                // TODO: Implement logic on where to move here
+                System.err.println("当前可见鱼: " + visibleFishes);
+                System.err.println("当前已经扫描的鱼: " + scannedIds);
+
+                // 找到最近的未被扫描的鱼
+                Fish nearestFish = findNearestFish(drone, visibleFishes, scannedIds);
+
+                // 如果找到未被扫描的最近鱼，更新目标位置
+                if (nearestFish != null) {
+                    targetX = nearestFish.pos().x();
+                    targetY = nearestFish.pos().y();
+                }
+
+                System.err.println("当前目标鱼: " + nearestFish);
+                System.out.printf("MOVE %d %d %d%n", targetX, targetY, drone.light());
+
             }
+
+            // 游戏回合结束后更新自动扫描到的鱼
+            for (Drone drone : myDrones) {
+                // 自动扫描的半径
+                double autoScanRadius = (drone.light() == 1) ? 800 - 600 : 2000 - 600;
+
+                List<Integer> autoScannedFishIds = visibleFishes.stream()
+                        .filter(fish -> !scannedIds.contains(fish.fishId()) && calculateDistance(drone.pos(), fish.pos()) <= autoScanRadius)
+                        .map(Fish::fishId)
+                        .toList();
+
+
+                // 添加自动扫描到的鱼到已扫描列表
+                scannedIds.addAll(autoScannedFishIds);
+            }
+
         }
     }
+
+    // 计算两点距离
+    private static double calculateDistance(Vector point1, Vector point2) {
+        return Math.sqrt(Math.pow(point1.x() - point2.x(), 2) + Math.pow(point1.y() - point2.y(), 2));
+    }
+
+    // 找到最近的未被扫描的鱼
+    private static Fish findNearestFish(Drone drone, List<Fish> visibleFishes, List<Integer> scannedIds) {
+        double minDistance = Double.MAX_VALUE;
+        Fish nearestFish = null;
+
+        for (Fish fish : visibleFishes) {
+            // 检查当前鱼是否已经被扫描过
+            if (!scannedIds.contains(fish.fishId())) {
+                double distance = calculateDistance(drone.pos(), fish.pos());
+
+                // 如果距离比当前最小距离小，则更新最小距离和目标鱼
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    nearestFish = fish;
+                }
+            }
+        }
+
+        return nearestFish;
+    }
+
+    // 以下是判断是否需要返回基地的函数
+    private static boolean shouldResurface(Drone drone, Vector basePosition) {
+        // 根据你的游戏规则判断是否需要返回基地
+        // 例如，可以在电池低于某个阈值时返回基地
+        return drone.battery() < 5 || drone.scans().size() < 4;
+    }
 }
+
